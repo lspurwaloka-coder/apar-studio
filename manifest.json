@@ -1,0 +1,16 @@
+{
+  "name": "APAR Label & QR Code Studio",
+  "short_name": "APAR Studio",
+  "description": "Generator stiker inspeksi, QR Code dan cetak APAR.",
+  "lang": "id-ID",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f1f5f9",
+  "theme_color": "#b91c1c",
+  "icons": [
+    {"src":"icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
+    {"src":"icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+  ]
+}

@@ -1,0 +1,1805 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generator Label & QR Code APAR (Pemadam Kebakaran)</title>
+  <!-- PWA -->
+  <meta name="theme-color" content="#b91c1c">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="APAR Studio">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Google Fonts: Inter & Oswald -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet">
+
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- QRCode Library dengan listener pemicu otomatis -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js" onload="if(typeof updateStickerPreview==='function') updateStickerPreview();"></script>
+
+  <!-- Module Storage untuk Penyimpanan Otomatis -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'apar-studio';
+    let db = null;
+    let auth = null;
+    let userId = null;
+    let isRemoteUpdate = false;
+
+    if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+      try {
+        let firebaseConfig = null;
+        if (typeof __firebase_config === 'string' && __firebase_config.trim().startsWith('{')) {
+          firebaseConfig = JSON.parse(__firebase_config);
+        } else if (typeof __firebase_config === 'object' && __firebase_config !== null) {
+          firebaseConfig = __firebase_config;
+        }
+
+        if (firebaseConfig) {
+          const app = initializeApp(firebaseConfig);
+          auth = getAuth(app);
+          db = getFirestore(app);
+
+          const token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+          const initAuth = async () => {
+            if (token) {
+              await signInWithCustomToken(auth, token);
+            } else {
+              await signInAnonymously(auth);
+            }
+          };
+
+          initAuth().then(() => {
+            onAuthStateChanged(auth, (user) => {
+              if (user) {
+                userId = user.uid;
+                setupCloudSync();
+              }
+            });
+          }).catch(err => console.error("Auth error:", err));
+        }
+      } catch (err) {
+        console.warn("Storage init warning:", err);
+      }
+    }
+
+    function setupCloudSync() {
+      if (!db || !userId) return;
+
+      const syncStatus = document.getElementById('syncStatus');
+      if (syncStatus) {
+        syncStatus.classList.remove('hidden');
+        syncStatus.innerHTML = `<i class="fa-solid fa-cloud-arrow-up text-emerald-500"></i> Cloud Active`;
+      }
+
+      const docRef = doc(db, 'artifacts', appId, 'users', userId, 'apar_data', 'current');
+
+      // Mendengarkan perubahan data tersimpan dari cloud
+      onSnapshot(docRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          isRemoteUpdate = true;
+          if (data.companyName && document.getElementById('companyName')) { document.getElementById('companyName').value = data.companyName; }
+          if (data.vendorName && document.getElementById('vendorName')) { document.getElementById('vendorName').value = data.vendorName; }
+          if (data.vendorAddress && document.getElementById('vendorAddress')) { document.getElementById('vendorAddress').value = data.vendorAddress; }
+          if (data.vendorContact && document.getElementById('vendorContact')) { document.getElementById('vendorContact').value = data.vendorContact; }
+          if (data.barcodeValue && document.getElementById('barcodeValue')) { document.getElementById('barcodeValue').value = data.barcodeValue; }
+          if (data.agentType && document.getElementById('agentType')) { document.getElementById('agentType').value = data.agentType; }
+          if (data.weightValue && document.getElementById('weightValue')) { document.getElementById('weightValue').value = data.weightValue; }
+          if (data.fillDate && document.getElementById('fillDate')) { document.getElementById('fillDate').value = data.fillDate; }
+          if (data.expireDate && document.getElementById('expireDate')) { document.getElementById('expireDate').value = data.expireDate; }
+          if (data.inspectorName && document.getElementById('inspectorName')) { document.getElementById('inspectorName').value = data.inspectorName; }
+          if (data.inspectorContact && document.getElementById('inspectorContact')) { document.getElementById('inspectorContact').value = data.inspectorContact; }
+          if (data.locationTag && document.getElementById('locationTag')) { document.getElementById('locationTag').value = data.locationTag; }
+          if (data.stickerMode && document.getElementById('stickerMode')) { document.getElementById('stickerMode').value = data.stickerMode; }
+          if (data.qrSizeMm && document.getElementById('qrSizeMm')) { document.getElementById('qrSizeMm').value = data.qrSizeMm; }
+          if (data.qrDataType && document.getElementById('qrDataType')) { document.getElementById('qrDataType').value = data.qrDataType; }
+          if (data.accentColor && document.getElementById('accentColor')) { document.getElementById('accentColor').value = data.accentColor; }
+
+          if (typeof window.updateStickerPreview === 'function') {
+            window.updateStickerPreview();
+          }
+          isRemoteUpdate = false;
+        }
+      }, (err) => console.error("Storage listener error:", err));
+
+      let saveTimer = null;
+      window.saveToCloud = function() {
+        if (!db || !userId || isRemoteUpdate) return;
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(async () => {
+          try {
+            const payload = {
+              companyName: document.getElementById('companyName')?.value || '',
+              vendorName: document.getElementById('vendorName')?.value || '',
+              vendorAddress: document.getElementById('vendorAddress')?.value || '',
+              vendorContact: document.getElementById('vendorContact')?.value || '',
+              barcodeValue: document.getElementById('barcodeValue')?.value || '',
+              agentType: document.getElementById('agentType')?.value || '',
+              weightValue: document.getElementById('weightValue')?.value || '',
+              fillDate: document.getElementById('fillDate')?.value || '',
+              expireDate: document.getElementById('expireDate')?.value || '',
+              inspectorName: document.getElementById('inspectorName')?.value || '',
+              inspectorContact: document.getElementById('inspectorContact')?.value || '',
+              locationTag: document.getElementById('locationTag')?.value || '',
+              stickerMode: document.getElementById('stickerMode')?.value || '',
+              qrSizeMm: document.getElementById('qrSizeMm')?.value || '',
+              qrDataType: document.getElementById('qrDataType')?.value || '',
+              accentColor: document.getElementById('accentColor')?.value || '',
+              updatedAt: new Date().toISOString()
+            };
+            await setDoc(docRef, payload);
+            if (syncStatus) {
+              syncStatus.innerHTML = `<i class="fa-solid fa-cloud-check text-emerald-500"></i> Tersimpan di Awan`;
+            }
+          } catch (e) {
+            console.error("Gagal menyimpan data:", e);
+          }
+        }, 400);
+      };
+    }
+  </script>
+
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    .font-oswald {
+      font-family: 'Oswald', sans-serif;
+    }
+    @media print {
+      @page {
+        margin: 0 !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .print-only {
+        display: block !important;
+      }
+      body {
+        background: white !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+      .sticker-card {
+        box-shadow: none !important;
+        border: 2px solid #000 !important;
+        page-break-inside: avoid;
+      }
+      /* Custom layout grid for 8 stickers per page */
+      #batchGrid {
+        display: grid !important;
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 6mm !important;
+        padding: 4mm !important;
+        width: 100% !important;
+      }
+      .batch-card-item {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        border: 2px solid #000 !important;
+        box-shadow: none !important;
+      }
+
+      /* Layout khusus Cetak Thermal via System Driver (58mm / 80mm) - Presisi & Senter */
+      body.thermal-print-active header,
+      body.thermal-print-active footer,
+      body.thermal-print-active #batchTab,
+      body.thermal-print-active .no-print,
+      body.thermal-print-active .lg\:col-span-6:first-child {
+        display: none !important;
+      }
+      body.thermal-print-active {
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        display: block !important;
+        text-align: left !important;
+      }
+      body.thermal-print-active main {
+        max-width: 100% !important;
+        width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+      body.thermal-print-active #singleTab {
+        display: block !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      body.thermal-print-active #singleTab > div:last-child {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        display: block !important;
+      }
+      body.thermal-print-active #singleTab > div:last-child > div {
+        max-width: 100% !important;
+        width: 100% !important;
+        display: block !important;
+        margin: 0 !important;
+      }
+      body.thermal-print-58 #aparSticker {
+        width: 44mm !important;
+        max-width: 44mm !important;
+        border: 2px solid #000 !important;
+        box-shadow: none !important;
+        margin: 0 0 0 0 !important;
+        box-sizing: border-box !important;
+      }
+      body.thermal-print-80 #aparSticker {
+        width: 68mm !important;
+        max-width: 68mm !important;
+        border: 2px solid #000 !important;
+        box-shadow: none !important;
+        margin: 0 0 0 0 !important;
+        box-sizing: border-box !important;
+      }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col">
+
+  <header class="bg-red-700 text-white border-b border-red-800 sticky top-0 z-30 shadow-md no-print">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between h-16 items-center">
+        <div class="flex items-center gap-3">
+          <div id="mainAppHeaderLogoBox" class="bg-white text-red-700 p-2 rounded-xl shadow-inner flex items-center justify-center min-w-[42px] h-[42px]">
+            <img id="mainAppHeaderLogoImg" src="" alt="App Logo" class="hidden h-7 w-auto object-contain">
+            <i id="mainAppHeaderLogoIcon" class="fa-solid fa-fire-extinguisher text-2xl"></i>
+          </div>
+          <div>
+            <h1 id="mainAppTitle" class="font-bold text-lg sm:text-xl leading-tight">APAR Label & QR Code Studio</h1>
+            <p id="mainAppSubtitle" class="text-xs text-red-100">Generator Stiker Inspeksi & Pengisian Tabung Pemadam APAR</p>
+          </div>
+        </div>
+        
+        <div class="flex items-center gap-2">
+          <button onclick="openStandaloneWindow()" title="Buka di Tab Baru untuk akses Web Bluetooth penuh" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-red-800 hover:bg-red-600 text-red-100 transition flex items-center gap-1.5">
+            <i class="fa-solid fa-up-right-from-square"></i> <span class="hidden sm:inline">Tab Baru</span>
+          </button>
+          <button id="installPwaBtn" onclick="installPWA()" title="Pasang APAR Studio ke layar utama" class="hidden px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-red-700 hover:bg-red-50 transition flex items-center gap-1.5">
+            <i class="fa-solid fa-download"></i> <span class="hidden sm:inline">Install</span>
+          </button>
+          <button onclick="switchTab('single')" id="tabSingleBtn" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-red-700 shadow-sm transition">
+            <i class="fa-solid fa-tag mr-1"></i> Stiker Tunggal
+          </button>
+          <button onclick="switchTab('batch')" id="tabBatchBtn" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-800 text-red-100 hover:bg-red-600 transition">
+            <i class="fa-solid fa-layer-group mr-1"></i> Batch / Banyak APAR
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+    
+    <!-- SINGLE STICKER TAB -->
+    <div id="singleTab" class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      
+      <!-- Input Form Panel -->
+      <div class="lg:col-span-6 bg-white p-5 rounded-2xl shadow-sm border border-slate-200 no-print space-y-4">
+        <div class="border-b border-slate-100 pb-3 flex justify-between items-center">
+          <h2 class="font-bold text-slate-800 text-base flex items-center gap-2">
+            <i class="fa-solid fa-pen-to-square text-red-600"></i> Data Inspeksi Tabung APAR
+          </h2>
+          <div class="flex items-center gap-2">
+            <span id="syncStatus" class="hidden text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
+              <i class="fa-solid fa-cloud-check text-emerald-500"></i> Tersimpan
+            </span>
+            <span class="text-[11px] bg-red-50 text-red-600 font-semibold px-2.5 py-0.5 rounded-full">K3 Standard</span>
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          <!-- Branding Header Aplikasi (Judul & Logo Utama Header) -->
+          <div class="p-3 bg-red-50/70 rounded-xl border border-red-100 space-y-2">
+            <span class="text-xs font-bold text-red-800 flex items-center gap-1.5">
+              <i class="fa-solid fa-heading text-red-600"></i> Pengaturan Judul & Logo Header Aplikasi
+            </span>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <label for="appTitleInput" class="block text-[11px] font-semibold text-slate-700 mb-0.5">Judul Utama Header</label>
+                <input type="text" id="appTitleInput" value="APAR Label & QR Code Studio" placeholder="Judul Aplikasi..." class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-red-500 focus:outline-none transition">
+              </div>
+              <div>
+                <label for="appSubtitleInput" class="block text-[11px] font-semibold text-slate-700 mb-0.5">Sub-judul Header</label>
+                <input type="text" id="appSubtitleInput" value="Generator Stiker Inspeksi & Pengisian Tabung Pemadam APAR" placeholder="Deskripsi ringkas..." class="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-red-500 focus:outline-none transition">
+              </div>
+            </div>
+            <div>
+              <label for="appHeaderLogoInput" class="block text-[11px] font-semibold text-slate-700 mb-0.5">Logo Header Aplikasi (Upload PNG / JPG)</label>
+              <div class="flex items-center gap-2">
+                <input type="file" id="appHeaderLogoInput" accept="image/*" class="w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-[11px] file:font-semibold file:bg-red-100 file:text-red-700 hover:file:bg-red-200 cursor-pointer border border-slate-200 rounded-lg p-1 transition">
+                <button type="button" onclick="removeAppHeaderLogo()" title="Reset Logo Header" class="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-semibold transition whitespace-nowrap flex items-center gap-1">
+                  <i class="fa-solid fa-rotate-left text-red-600"></i> Reset
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Nama Perusahaan / Gedung Pemilik -->
+          <div>
+            <label for="companyName" class="block text-xs font-semibold text-slate-700 mb-1">Nama Perusahaan / Gedung (Pemilik APAR)</label>
+            <input type="text" id="companyName" value="PT. SEJAHTERA UTAMA" placeholder="Contoh: PT. Mulia Kencana" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-red-500 focus:outline-none transition">
+          </div>
+
+          <!-- Logo Perusahaan Custom -->
+          <div>
+            <label for="logoInput" class="block text-xs font-semibold text-slate-700 mb-1">Ganti Logo Stiker (Upload PNG / JPG)</label>
+            <div class="flex items-center gap-2">
+              <input type="file" id="logoInput" accept="image/*" class="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-red-50 file:text-red-700 hover:file:bg-red-100 cursor-pointer border border-slate-200 rounded-xl p-1 transition">
+              <button type="button" onclick="removeCustomLogo()" title="Hapus Logo & Gunakan Icon Default" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-semibold transition flex items-center gap-1">
+                <i class="fa-solid fa-trash-can text-red-500"></i> Hapus
+              </button>
+            </div>
+          </div>
+
+          <!-- Nama Vendor Pengisi APAR -->
+          <div>
+            <label for="vendorName" class="block text-xs font-semibold text-slate-700 mb-1">Nama Vendor / Perusahaan Pengisi APAR</label>
+            <input type="text" id="vendorName" value="CV.HUDA JAYA LESTARI" placeholder="Contoh: CV. Mandiri Jaya Extinguisher" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-red-500 focus:outline-none transition">
+          </div>
+
+          <!-- Alamat & Kontak Vendor -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label for="vendorAddress" class="block text-xs font-semibold text-slate-700 mb-1">Alamat Vendor</label>
+              <input type="text" id="vendorAddress" value="Jl. Perkebunan II No.17 Buahbatu Bandung" placeholder="Alamat vendor..." class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-red-500 focus:outline-none transition">
+            </div>
+            <div>
+              <label for="vendorContact" class="block text-xs font-semibold text-slate-700 mb-1">No. HP / WA Vendor</label>
+              <input type="text" id="vendorContact" value="0895324269894" placeholder="0812-xxxx-xxxx" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-red-500 focus:outline-none transition">
+            </div>
+          </div>
+
+          <!-- Kode Tag / ID Barcode -->
+          <div>
+            <label for="barcodeValue" class="block text-xs font-semibold text-slate-700 mb-1">Nomor Tag / ID Tabung APAR</label>
+            <div class="flex gap-2">
+              <input type="text" id="barcodeValue" value="APAR-2026-0801" placeholder="Kode unik tabung..." class="flex-1 px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono font-bold focus:ring-2 focus:ring-red-500 focus:outline-none transition">
+              <button onclick="copyTagCode()" title="Salin Kode" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs transition">
+                <i class="fa-regular fa-copy"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Media Racun Api & Bobot -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label for="agentType" class="block text-xs font-semibold text-slate-700 mb-1">Jenis Media / Racun Api</label>
+              <select id="agentType" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white focus:ring-2 focus:ring-red-500 focus:outline-none transition">
+                <option value="Dry Chemical Powder">Dry Chemical Powder</option>
+                <option value="Carbon Dioxide (CO2)">Carbon Dioxide (CO2)</option>
+                <option value="Foam AFFF">Foam AFFF</option>
+                <option value="Clean Agent / Halotron">Clean Agent / Halotron</option>
+                <option value="Air / Water Pressurized">Air / Water Pressurized</option>
+              </select>
+            </div>
+            <div>
+              <label for="weightValue" class="block text-xs font-semibold text-slate-700 mb-1">Bobot / Kapasitas</label>
+              <input type="text" id="weightValue" value="3.5 Kg" placeholder="Misal: 3.5 Kg" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-red-500 focus:outline-none transition">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label for="fillDate" class="block text-xs font-semibold text-slate-700 mb-1">Tanggal Pengisian</label>
+              <input type="date" id="fillDate" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-red-500 focus:outline-none transition">
+            </div>
+            <div>
+              <div class="flex justify-between items-center mb-1">
+                <label for="expireDate" class="block text-xs font-semibold text-slate-700">Tanggal Kadaluarsa</label>
+                <div class="space-x-1">
+                  <button type="button" onclick="quickSetExpire(1)" class="text-[10px] text-red-600 hover:underline font-semibold">+1 Thn</button>
+                  <button type="button" onclick="quickSetExpire(2)" class="text-[10px] text-red-600 hover:underline font-semibold">+2 Thn</button>
+                </div>
+              </div>
+              <input type="date" id="expireDate" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-red-500 focus:outline-none transition">
+            </div>
+          </div>
+
+          <!-- Petugas & Lokasi -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label for="inspectorName" class="block text-xs font-semibold text-slate-700 mb-1">Petugas / Inspector</label>
+              <input type="text" id="inspectorName" value="Agus Rusmana" placeholder="Nama petugas" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-red-500 focus:outline-none transition">
+            </div>
+            <div>
+              <label for="inspectorContact" class="block text-xs font-semibold text-slate-700 mb-1">No. HP Inspector</label>
+              <input type="text" id="inspectorContact" value="0895324269894" placeholder="08xx-xxxx-xxxx" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-red-500 focus:outline-none transition">
+            </div>
+            <div>
+              <label for="locationTag" class="block text-xs font-semibold text-slate-700 mb-1">Lokasi Tabung</label>
+              <input type="text" id="locationTag" value="Lantai 1 - Dapur" placeholder="Contoh: Gedung A" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-red-500 focus:outline-none transition">
+            </div>
+          </div>
+
+          <!-- Mode Tampilan Stiker & Ukuran Presisi -->
+          <div class="pt-3 border-t border-slate-100 grid grid-cols-2 gap-3">
+            <div>
+              <label for="stickerMode" class="block text-xs font-semibold text-slate-700 mb-1">Mode Pratinjau</label>
+              <select id="stickerMode" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white font-semibold text-red-600 focus:ring-2 focus:ring-red-500 focus:outline-none transition">
+                <option value="qrOnly" selected>Hanya QR Code (Label Presisi)</option>
+                <option value="fullDetails">Kartu Teks Lengkap + QR</option>
+              </select>
+            </div>
+            <div>
+              <label for="qrSizeMm" class="block text-xs font-semibold text-slate-700 mb-1">Ukuran Cetak Label / QR</label>
+              <select id="qrSizeMm" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white focus:ring-2 focus:ring-red-500 focus:outline-none transition">
+                <option value="50">50 x 50 mm (5 x 5 cm)</option>
+                <option value="60">60 x 60 mm (6 x 6 cm)</option>
+                <option value="75">75 x 75 mm (7.5 x 7.5 cm)</option>
+                <option value="90">90 x 90 mm (9 x 9 cm) - Besar</option>
+                <option value="100" selected>100 x 100 mm (10 x 10 cm) - Super Jumbo</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Panel Driver Printer Thermal Bluetooth RPP02N -->
+          <div class="pt-3 border-t border-slate-100 bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
+            <div class="flex justify-between items-center">
+              <label class="block text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <i class="fa-solid fa-print text-blue-600"></i> Printer Thermal Bluetooth (RPP02N)
+              </label>
+              <span id="btStatusBadge" class="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full font-semibold">
+                <i class="fa-brands fa-bluetooth-b"></i> Belum Terhubung
+              </span>
+            </div>
+            
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div>
+                <label for="thermalWidthSelect" class="block text-[10px] font-semibold text-slate-600 mb-0.5">Ukuran Kertas</label>
+                <select id="thermalWidthSelect" class="w-full px-2 py-1.5 rounded-lg border border-slate-200 text-xs bg-white focus:outline-none font-semibold text-slate-700">
+                  <option value="58" selected>58 mm (Standard)</option>
+                  <option value="80">80 mm (Lebar)</option>
+                </select>
+              </div>
+              <div>
+                <label for="thermalScaleSelect" class="block text-[10px] font-semibold text-slate-600 mb-0.5">Skala Lebar</label>
+                <select id="thermalScaleSelect" class="w-full px-2 py-1.5 rounded-lg border border-slate-200 text-xs bg-white focus:outline-none font-semibold text-slate-700">
+                  <option value="85">85% (Ringkas)</option>
+                  <option value="90" selected>90% (Standard)</option>
+                  <option value="100">100% (Penuh)</option>
+                </select>
+              </div>
+              <div>
+                <label for="thermalOffsetXSelect" class="block text-[10px] font-semibold text-slate-600 mb-0.5">Geser Posisi X</label>
+                <select id="thermalOffsetXSelect" class="w-full px-2 py-1.5 rounded-lg border border-slate-200 text-xs bg-white focus:outline-none font-semibold text-slate-700">
+                  <option value="-80" selected>Geser Kiri 80px (Senter)</option>
+                  <option value="-60">Geser Kiri 60px</option>
+                  <option value="-40">Geser Kiri 40px</option>
+                  <option value="-20">Geser Kiri 20px</option>
+                  <option value="0">Tengah / 0px</option>
+                  <option value="20">Geser Kanan 20px</option>
+                </select>
+              </div>
+              <div class="flex items-end">
+                <button type="button" onclick="connectBluetoothPrinter()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1.5 px-2 rounded-lg text-xs flex items-center justify-center gap-1 transition shadow-xs">
+                  <i class="fa-brands fa-bluetooth-b"></i> Hubungkan BT
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Format QR Data & Warna Tema -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label for="qrDataType" class="block text-xs font-semibold text-slate-700 mb-1">Isi Data QR Code</label>
+              <select id="qrDataType" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white focus:ring-2 focus:ring-red-500 focus:outline-none transition">
+                <option value="fullDetails" selected>1. Lengkap (Pemilik, Vendor, Media, Exp, Petugas)</option>
+                <option value="compactK3">2. Ringkas K3 (Info Utama)</option>
+                <option value="idOnly">3. Hanya ID Tabung</option>
+              </select>
+            </div>
+            <div>
+              <label for="accentColor" class="block text-xs font-semibold text-slate-700 mb-1">Warna Tema Stiker</label>
+              <select id="accentColor" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white focus:ring-2 focus:ring-red-500 focus:outline-none transition">
+                <option value="red">Merah Bahaya (Standard APAR)</option>
+                <option value="blue">Biru Industri</option>
+                <option value="emerald">Hijau Keselamatan (K3)</option>
+                <option value="dark">Hitam Minimalis</option>
+              </select>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="pt-4 flex flex-wrap gap-2">
+          <button onclick="downloadStickerPNG()" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition">
+            <i class="fa-solid fa-download"></i> Unduh PNG
+          </button>
+          <button onclick="printSingleSticker()" class="bg-slate-800 hover:bg-slate-900 text-white font-semibold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-2 transition">
+            <i class="fa-solid fa-print"></i> Cetak A4
+          </button>
+          <button onclick="printSingleToThermalBT()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-sm">
+            <i class="fa-solid fa-receipt"></i> Cetak Thermal BT
+          </button>
+          <button onclick="printThermalSystem()" title="Cetak ke Printer Thermal via Driver Sistem Browser" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-sm">
+            <i class="fa-solid fa-print"></i> Cetak Thermal (Sistem)
+          </button>
+        </div>
+      </div>
+
+      <div class="lg:col-span-6 flex flex-col items-center justify-center">
+        
+        <div class="w-full max-w-sm">
+          <!-- Status Badge Indicator -->
+          <div class="mb-3 flex justify-between items-center no-print">
+            <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Pratinjau Stiker APAR</span>
+            <div id="statusBadge" class="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold flex items-center gap-1.5">
+              <i class="fa-solid fa-shield-check"></i> SIAP PAKAI
+            </div>
+          </div>
+
+          <!-- STICKER CONTAINER CARD -->
+          <div id="aparSticker" class="sticker-card bg-white rounded-2xl shadow-xl overflow-hidden border-4 border-red-600 transition-all duration-300 flex flex-col items-center justify-center">
+            
+            <!-- Header Stiker (Teks LABEL APAR Dihapus, Menampilkan Logo/Icon & Perusahaan) -->
+            <div id="stickerHeader" class="w-full bg-red-600 text-white p-3 text-center relative border-b-2 border-red-700 flex flex-col items-center justify-center min-h-[68px]">
+              <div id="previewLogoContainer" class="flex items-center justify-center gap-2 mb-1">
+                <img id="previewLogoImg" src="" alt="Logo" class="hidden h-10 max-w-[160px] object-contain bg-white/90 p-1 rounded-lg shadow-2xs">
+                <i id="defaultHeaderIcon" class="fa-solid fa-fire-extinguisher text-2xl"></i>
+              </div>
+              <p id="previewCompany" class="text-[11px] font-bold text-white tracking-wider uppercase mt-0.5">PT. SEJAHTERA UTAMA</p>
+            </div>
+
+            <!-- Detail Teks Section (Hidden in QR-Only mode) -->
+            <div id="detailsSection" class="hidden w-full p-4 space-y-3 bg-white text-slate-800">
+              <!-- Grid Media & Bobot -->
+              <div class="grid grid-cols-2 gap-2 text-xs border-b border-slate-100 pb-2">
+                <div>
+                  <span class="text-[10px] text-slate-400 block font-semibold uppercase">Jenis Media</span>
+                  <span id="previewAgent" class="font-bold text-slate-700">Dry Chemical Powder</span>
+                </div>
+                <div>
+                  <span class="text-[10px] text-slate-400 block font-semibold uppercase">Kapasitas / Bobot</span>
+                  <span id="previewWeight" class="font-bold text-slate-700">3.5 Kg</span>
+                </div>
+              </div>
+
+              <!-- Tanggal Isi & Tanggal Expire -->
+              <div class="grid grid-cols-2 gap-2 text-xs border-b border-slate-100 pb-2">
+                <div class="bg-slate-50 p-1.5 rounded border border-slate-100">
+                  <span class="text-[9px] text-slate-400 block font-semibold uppercase">Tanggal Isi</span>
+                  <span id="previewFillDate" class="font-bold text-slate-800">01/08/2026</span>
+                </div>
+                <div id="expireBox" class="bg-red-50 p-1.5 rounded border border-red-200">
+                  <span class="text-[9px] text-red-500 block font-semibold uppercase">Kadaluarsa (Exp)</span>
+                  <span id="previewExpireDate" class="font-bold text-red-600">01/08/2027</span>
+                </div>
+              </div>
+
+              <!-- Petugas & Lokasi -->
+              <div class="grid grid-cols-2 gap-2 text-[11px]">
+                <div>
+                  <span class="text-[9px] text-slate-400 block font-semibold uppercase">Petugas:</span>
+                  <span id="previewInspector" class="font-semibold text-slate-700 truncate block">Agus Rusmana</span>
+                </div>
+                <div>
+                  <span class="text-[9px] text-slate-400 block font-semibold uppercase">Lokasi Tabung:</span>
+                  <span id="previewLocation" class="font-semibold text-slate-700 truncate block">Lantai 1 - Dapur</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- QR Code Main Showcase Area (Precision Sized) -->
+            <div id="qrOnlySection" class="w-full p-4 flex flex-col items-center justify-center bg-white">
+              <div class="p-3 bg-slate-50 rounded-2xl border-2 border-slate-100 shadow-inner flex flex-col items-center w-full">
+                <!-- Canvas QR diperbesar dan dibuat responsive dengan kontras tinggi -->
+                <canvas id="previewQrCanvas" class="bg-white p-3 rounded-xl shadow-sm transition-all max-w-full" style="image-rendering: pixelated; width: 280px; height: 280px;"></canvas>
+                <div id="previewBarcodeText" class="text-xs font-semibold tracking-wide text-slate-800 mt-4 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-2xs text-center flex flex-col items-center justify-center gap-1 w-full">
+                  <div class="flex items-center gap-2">
+                    <span>Isi: -</span>
+                    <span class="text-slate-300">|</span>
+                    <span class="text-red-600 font-bold">Exp: -</span>
+                  </div>
+                  <div id="previewInspectorPhone" class="text-[10px] text-slate-600 font-medium flex items-center gap-1 border-t border-slate-100 pt-1 w-full justify-center">
+                    <i class="fa-solid fa-phone text-slate-400 text-[9px]"></i> Inspector: <span class="font-bold text-slate-800">0813-9988-7766</span>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Physical Dimension Badge -->
+              <div class="mt-3 flex items-center gap-2 text-[11px] text-slate-500 bg-slate-100 px-3 py-1 rounded-lg border border-slate-200 font-semibold no-print">
+                <i class="fa-solid fa-ruler-combined text-red-500"></i>
+                <span id="dimensionBadge">Dimensi Cetak: 100 x 100 mm (Resolusi Tinggi Presisi)</span>
+              </div>
+            </div>
+
+            <!-- Footer Warning Note -->
+            <div class="w-full bg-slate-900 text-white text-[9px] text-center p-1.5 font-medium">
+              * Scan QR Code untuk verifikasi detail & riwayat inspeksi K3 APAR
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- BATCH GENERATOR TAB (HIDDEN BY DEFAULT) -->
+    <div id="batchTab" class="hidden space-y-6 no-print">
+      <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+        <div class="border-b border-slate-100 pb-3 flex justify-between items-center">
+          <div>
+            <h2 class="font-bold text-slate-800 text-base">Generator Stiker APAR Massal (8 QR Code per Lembar)</h2>
+            <p class="text-xs text-slate-500">
+              Format input: <code class="bg-slate-100 px-1.5 py-0.5 rounded text-red-600 font-mono">Kode Tag | Lokasi | Jenis Media | Bobot | Tgl Isi | Tgl Expire | No HP Inspector</code>
+            </p>
+          </div>
+          <button onclick="fillSample8Data()" class="px-3 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-xl text-xs font-semibold transition border border-red-200 flex items-center gap-1.5">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> Isi 8 Data Contoh APAR
+          </button>
+        </div>
+
+        <div>
+          <label for="batchInput" class="block text-xs font-semibold text-slate-700 mb-1">Daftar Tabung APAR (Satu per baris):</label>
+          <textarea id="batchInput" rows="8" class="w-full p-3 rounded-xl border border-slate-200 text-xs font-mono focus:ring-2 focus:ring-red-500 focus:outline-none leading-relaxed" placeholder="APAR-001 | Lantai 1 Dapur | Dry Chemical Powder | 3.5 Kg | 01/08/2026 | 01/08/2027 | 0813-9988-7766&#10;APAR-002 | Lantai 2 Server | CO2 5Kg | 5.0 Kg | 01/08/2026 | 01/08/2028 | 0813-9988-7766"></textarea>
+        </div>
+
+        <div class="flex flex-wrap gap-2">
+          <button onclick="generateBatchStickers()" class="bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 px-4 rounded-xl text-xs flex items-center gap-2 transition">
+            <i class="fa-solid fa-gears"></i> Buat 8 QR Code Stiker
+          </button>
+          <button onclick="window.print()" class="bg-slate-800 hover:bg-slate-900 text-white font-semibold py-2.5 px-4 rounded-xl text-xs flex items-center gap-2 transition">
+            <i class="fa-solid fa-print"></i> Cetak 8 QR Code per Lembar (A4)
+          </button>
+          <button onclick="printBatchToThermalBT()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-4 rounded-xl text-xs flex items-center gap-2 transition">
+            <i class="fa-solid fa-receipt"></i> Cetak Semua ke Thermal BT (RPP02N)
+          </button>
+        </div>
+      </div>
+
+      <!-- Batch Preview Result Grid -->
+      <div>
+        <div class="flex justify-between items-center mb-3">
+          <div class="flex items-center gap-2">
+            <h3 class="font-bold text-slate-800 text-sm">Pratinjau Lembar Cetak (8 Stiker Grid)</h3>
+            <span id="batchCount" class="text-xs font-semibold bg-red-50 text-red-600 px-2.5 py-0.5 rounded-full border border-red-100">0 Stiker Dihasilkan</span>
+          </div>
+          <span class="text-xs text-slate-400 font-medium"><i class="fa-solid fa-file-pdf mr-1"></i> Layout Cetak A4 (2 x 4 Grid)</span>
+        </div>
+        <div id="batchGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-200/50 p-4 rounded-2xl border border-slate-300">
+          <!-- Batch items will be rendered here dynamically -->
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-5 right-5 bg-slate-900 text-white text-xs px-4 py-2.5 rounded-xl shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 z-50 pointer-events-none flex items-center gap-2">
+    <i class="fa-solid fa-circle-check text-emerald-400"></i>
+    <span id="toastMsg">Pesan Toast</span>
+  </div>
+
+  <!-- Modal Dialog Penjelasan Permissions Policy Bluetooth -->
+  <div id="btPolicyModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 hidden">
+    <div class="bg-white max-w-md w-full rounded-2xl p-6 shadow-2xl border border-slate-200 space-y-4">
+      <div class="flex items-center gap-3 text-amber-600">
+        <div class="bg-amber-100 p-2.5 rounded-xl">
+          <i class="fa-solid fa-shield-halved text-2xl"></i>
+        </div>
+        <div>
+          <h3 class="font-bold text-slate-800 text-base">Web Bluetooth Diblokir Frame</h3>
+          <p class="text-xs text-slate-500">Kebijakan Keamanan Iframe / Browser</p>
+        </div>
+      </div>
+
+      <p class="text-xs text-slate-600 leading-relaxed">
+        Akses langsung ke perangkat Bluetooth (`navigator.bluetooth`) dibatasi oleh kebijakan keamanan preview browser (Permissions Policy).
+      </p>
+
+      <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2 text-xs text-slate-700">
+        <div class="font-bold text-slate-800 flex items-center gap-1.5">
+          <i class="fa-solid fa-lightbulb text-amber-500"></i> Solusi Alternatif Cetak Thermal RPP02N:
+        </div>
+        <ul class="list-disc list-inside space-y-1 text-[11px] text-slate-600">
+          <li><strong>Buka Tab Baru (Rekomendasi BT):</strong> Jalankan aplikasi di luar frame untuk mengaktifkan Web Bluetooth langsung.</li>
+          <li><strong>Cetak Thermal (Driver Sistem):</strong> Sambungkan RPP02N via Bluetooth/USB ke HP/Komputer Anda, lalu gunakan Cetak Thermal Sistem.</li>
+          <li><strong>Unduh Gambar PNG:</strong> Simpan stiker lalu cetak dari aplikasi thermal Android seperti <em>RawBT</em> atau <em>ESC/POS Print</em>.</li>
+        </ul>
+      </div>
+
+      <div class="pt-2 flex flex-col sm:flex-row gap-2">
+        <button onclick="openStandaloneWindow()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-3 rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-sm">
+          <i class="fa-solid fa-up-right-from-square"></i> Buka Tab Baru
+        </button>
+        <button onclick="closeBtPolicyModal(); printThermalSystem();" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-3 rounded-xl text-xs flex items-center justify-center gap-2 transition">
+          <i class="fa-solid fa-print"></i> Cetak Thermal Sistem
+        </button>
+        <button onclick="closeBtPolicyModal()" class="px-3 py-2 text-xs text-slate-400 hover:text-slate-600 font-semibold">
+          Tutup
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="bg-white border-t border-slate-200 py-3 text-center text-xs text-slate-500 no-print mt-auto">
+    <p>APAR Label & QR Code Studio &copy; 2026 — Sistem Manajemen Keselamatan K3</p>
+  </footer>
+
+  <script>
+    const appTitleInput = document.getElementById('appTitleInput');
+    const appSubtitleInput = document.getElementById('appSubtitleInput');
+    const appHeaderLogoInput = document.getElementById('appHeaderLogoInput');
+    const mainAppTitle = document.getElementById('mainAppTitle');
+    const mainAppSubtitle = document.getElementById('mainAppSubtitle');
+    const mainAppHeaderLogoImg = document.getElementById('mainAppHeaderLogoImg');
+    const mainAppHeaderLogoIcon = document.getElementById('mainAppHeaderLogoIcon');
+
+    let appHeaderLogoData = null;
+
+    function removeAppHeaderLogo() {
+      appHeaderLogoData = null;
+      if (appHeaderLogoInput) appHeaderLogoInput.value = '';
+      updateHeaderAppInfo();
+      showToast("Logo header aplikasi dikembalikan ke default");
+    }
+
+    function updateHeaderAppInfo() {
+      if (mainAppTitle && appTitleInput) {
+        mainAppTitle.textContent = appTitleInput.value.trim() || 'APAR Label & QR Code Studio';
+      }
+      if (mainAppSubtitle && appSubtitleInput) {
+        mainAppSubtitle.textContent = appSubtitleInput.value.trim() || 'Generator Stiker Inspeksi & Pengisian Tabung Pemadam APAR';
+      }
+      if (mainAppHeaderLogoImg && mainAppHeaderLogoIcon) {
+        if (appHeaderLogoData) {
+          mainAppHeaderLogoImg.src = appHeaderLogoData;
+          mainAppHeaderLogoImg.classList.remove('hidden');
+          mainAppHeaderLogoIcon.classList.add('hidden');
+        } else {
+          mainAppHeaderLogoImg.classList.add('hidden');
+          mainAppHeaderLogoIcon.classList.remove('hidden');
+        }
+      }
+    }
+
+    const companyNameInput = document.getElementById('companyName');
+    const vendorNameInput = document.getElementById('vendorName');
+    const vendorAddressInput = document.getElementById('vendorAddress');
+    const vendorContactInput = document.getElementById('vendorContact');
+    const barcodeValueInput = document.getElementById('barcodeValue');
+    const agentTypeInput = document.getElementById('agentType');
+    const weightValueInput = document.getElementById('weightValue');
+    const fillDateInput = document.getElementById('fillDate');
+    const expireDateInput = document.getElementById('expireDate');
+    const inspectorNameInput = document.getElementById('inspectorName');
+    const inspectorContactInput = document.getElementById('inspectorContact');
+    const locationTagInput = document.getElementById('locationTag');
+    const qrDataTypeSelect = document.getElementById('qrDataType');
+    const accentColorSelect = document.getElementById('accentColor');
+    const stickerModeSelect = document.getElementById('stickerMode');
+    const qrSizeMmSelect = document.getElementById('qrSizeMm');
+    const logoInput = document.getElementById('logoInput');
+
+    // Data Logo Custom
+    let customLogoData = null;
+    let customLogoImageObj = null;
+
+    function removeCustomLogo() {
+      customLogoData = null;
+      customLogoImageObj = null;
+      if (logoInput) logoInput.value = '';
+      updateStickerPreview();
+      showToast("Logo dikembalikan ke tampilan default");
+    }
+
+    // Bluetooth Thermal Printer (RPP02N Driver & ESC/POS Protocol)
+    let btDevice = null;
+    let btCharacteristic = null;
+
+    function showBluetoothPolicyModal() {
+      const modal = document.getElementById('btPolicyModal');
+      if (modal) {
+        modal.classList.remove('hidden');
+      }
+    }
+
+    function closeBtPolicyModal() {
+      const modal = document.getElementById('btPolicyModal');
+      if (modal) {
+        modal.classList.add('hidden');
+      }
+    }
+
+    function openStandaloneWindow() {
+      try {
+        const htmlContent = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+        const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+        const blobUrl = URL.createObjectURL(blob);
+        const win = window.open(blobUrl, '_blank');
+        if (!win) {
+          showToast("Gagal membuka tab baru. Mohon izinkan pop-up browser.", "error");
+        } else {
+          showToast("Membuka aplikasi di tab baru...");
+        }
+      } catch (e) {
+        window.open(window.location.href, '_blank');
+      }
+    }
+
+    async function connectBluetoothPrinter() {
+      if (!navigator.bluetooth) {
+        showToast("Browser tidak mendukung Web Bluetooth. Silakan gunakan Cetak Thermal Sistem.", "error");
+        showBluetoothPolicyModal();
+        return false;
+      }
+
+      if (document.featurePolicy && typeof document.featurePolicy.allowsFeature === 'function') {
+        if (!document.featurePolicy.allowsFeature('bluetooth')) {
+          showToast("Akses Bluetooth dibatasi oleh kebijakan frame.", "error");
+          showBluetoothPolicyModal();
+          return false;
+        }
+      }
+
+      try {
+        showToast("Mencari Printer Bluetooth RPP02N...");
+        btDevice = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: [
+            '00001101-0000-1000-8000-00805f9b34fb',
+            '0000ff00-0000-1000-8000-00805f9b34fb',
+            '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+            'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
+            '0000af02-0000-1000-8000-00805f9b34fb'
+          ]
+        });
+
+        const btStatusBadge = document.getElementById('btStatusBadge');
+        if (btStatusBadge) {
+          btStatusBadge.className = "text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-semibold animate-pulse";
+          btStatusBadge.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Menghubungkan...`;
+        }
+
+        const server = await btDevice.gatt.connect();
+        const services = await server.getPrimaryServices();
+
+        btCharacteristic = null;
+        for (const service of services) {
+          const characteristics = await service.getCharacteristics();
+          for (const c of characteristics) {
+            if (c.properties.write || c.properties.writeWithoutResponse) {
+              btCharacteristic = c;
+              break;
+            }
+          }
+          if (btCharacteristic) {
+            break;
+          }
+        }
+
+        if (btCharacteristic) {
+          if (btStatusBadge) {
+            btStatusBadge.className = "text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-semibold";
+            btStatusBadge.innerHTML = `<i class="fa-solid fa-check text-emerald-600"></i> ${btDevice.name || 'RPP02N'}`;
+          }
+          showToast(`Terhubung ke ${btDevice.name || 'Printer Bluetooth RPP02N'}`);
+          return true;
+        } else {
+          throw new Error("Layanan/Karakteristik Tulis Bluetooth tidak ditemukan.");
+        }
+      } catch (err) {
+        const btStatusBadge = document.getElementById('btStatusBadge');
+        if (btStatusBadge) {
+          btStatusBadge.className = "text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-semibold";
+          btStatusBadge.innerHTML = `<i class="fa-solid fa-xmark"></i> Akses BT Dibatasi`;
+        }
+
+        const isPolicyError = Boolean(err && (err.name === 'SecurityError' || 
+                              (err.message && (err.message.includes('permissions policy') || err.message.includes('disallowed')))));
+
+        if (isPolicyError) {
+          showToast("Web Bluetooth diblokir di dalam frame. Gunakan Tab Baru / Cetak Sistem.", "error");
+          showBluetoothPolicyModal();
+        } else {
+          showToast("Gagal koneksi Bluetooth: " + (err?.message || "Batal"), "error");
+        }
+        return false;
+      }
+    }
+
+    function printThermalSystem() {
+      const paperWidth = document.getElementById('thermalWidthSelect')?.value || '58';
+      document.body.classList.add('thermal-print-active', `thermal-print-${paperWidth}`);
+      
+      showToast(`Membuka dialog cetak thermal (${paperWidth}mm)...`);
+      setTimeout(() => {
+        window.print();
+        document.body.classList.remove('thermal-print-active', 'thermal-print-58', 'thermal-print-80');
+      }, 200);
+    }
+
+    async function sendDataToThermalPrinter(dataBytes) {
+      if (!btCharacteristic) {
+        throw new Error("Printer Bluetooth belum terhubung. Silakan klik 'Hubungkan BT' terlebih dahulu.");
+      }
+      
+      const CHUNK_SIZE = 100;
+      for (let i = 0; i < dataBytes.length; i += CHUNK_SIZE) {
+        const chunk = dataBytes.subarray(i, i + CHUNK_SIZE);
+        if (btCharacteristic.writeValueWithoutResponse) {
+          await btCharacteristic.writeValueWithoutResponse(chunk);
+        } else if (btCharacteristic.writeValue) {
+          await btCharacteristic.writeValue(chunk);
+        }
+        await new Promise(r => setTimeout(r, 25));
+      }
+    }
+
+    async function printSingleToThermalBT() {
+      try {
+        if (!btCharacteristic) {
+          const connected = await connectBluetoothPrinter();
+          if (!connected) return;
+        }
+
+        showToast("Mencetak stiker ke RPP02N...");
+        const stickerCanvas = createHighResStickerCanvas();
+        const paperWidth = document.getElementById('thermalWidthSelect')?.value || '58';
+        const printScale = parseInt(document.getElementById('thermalScaleSelect')?.value || '90');
+        const offsetX = parseInt(document.getElementById('thermalOffsetXSelect')?.value || '-80');
+        const rasterBytes = canvasToEscPosRaster(stickerCanvas, paperWidth, printScale, offsetX);
+        
+        await sendDataToThermalPrinter(rasterBytes);
+        showToast("Stiker berhasil dicetak ke printer thermal!");
+      } catch (err) {
+        console.error("Single thermal print error:", err);
+        showToast("Gagal cetak thermal: " + (err.message || "Terjadi kesalahan"), "error");
+      }
+    }
+
+    function canvasToEscPosRaster(sourceCanvas, paperWidthMm = 58, printScalePercent = 90, offsetXPx = -80) {
+      const targetDotWidth = parseInt(paperWidthMm) === 80 ? 576 : 384;
+      const bytesPerLine = targetDotWidth / 8;
+
+      // Skala aman agar margin kanan printer thermal tidak memotong teks/garis
+      const safeScale = (printScalePercent / 100);
+      const effectiveWidth = Math.round(targetDotWidth * safeScale);
+      const scale = effectiveWidth / sourceCanvas.width;
+      const targetDotHeight = Math.round(sourceCanvas.height * scale);
+
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = targetDotWidth;
+      tempCanvas.height = targetDotHeight;
+      const ctx = tempCanvas.getContext('2d');
+
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(0, 0, targetDotWidth, targetDotHeight);
+      
+      // Posisi X dengan offset agar stiker bergeser ke kiri dan pas di tengah fisik kertas
+      const baseX = Math.floor((targetDotWidth - effectiveWidth) / 2);
+      const renderX = Math.max(-80, Math.min(targetDotWidth - 50, baseX + parseInt(offsetXPx || 0)));
+      ctx.drawImage(sourceCanvas, renderX, 0, effectiveWidth, targetDotHeight);
+
+      const imgData = ctx.getImageData(0, 0, targetDotWidth, targetDotHeight);
+      const data = imgData.data;
+
+      const xL = bytesPerLine % 256;
+      const xH = Math.floor(bytesPerLine / 256);
+      const yL = targetDotHeight % 256;
+      const yH = Math.floor(targetDotHeight / 256);
+
+      const header = [0x1D, 0x76, 0x30, 0x00, xL, xH, yL, yH];
+      const rasterBytes = new Uint8Array(header.length + bytesPerLine * targetDotHeight);
+      rasterBytes.set(header, 0);
+
+      let byteIdx = header.length;
+      for (let y = 0; y < targetDotHeight; y++) {
+        for (let xByte = 0; xByte < bytesPerLine; xByte++) {
+          let byteVal = 0;
+          for (let bit = 0; bit < 8; bit++) {
+            const x = xByte * 8 + bit;
+            if (x >= 0 && x < targetDotWidth) {
+              const pIdx = (y * targetDotWidth + x) * 4;
+              const r = data[pIdx];
+              const g = data[pIdx + 1];
+              const b = data[pIdx + 2];
+              const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+              if (brightness < 128) {
+                byteVal |= (1 << (7 - bit));
+              }
+            }
+          }
+          rasterBytes[byteIdx++] = byteVal;
+        }
+      }
+
+      const initCmd = new Uint8Array([0x1B, 0x40, 0x1B, 0x61, 0x00]);
+      const feedCmd = new Uint8Array([0x1B, 0x64, 0x04]);
+
+      const fullBytes = new Uint8Array(initCmd.length + rasterBytes.length + feedCmd.length);
+      fullBytes.set(initCmd, 0);
+      fullBytes.set(rasterBytes, initCmd.length);
+      fullBytes.set(feedCmd, initCmd.length + rasterBytes.length);
+
+      return fullBytes;
+    }
+
+    // Helper untuk auto-shrink ukuran teks jika melebihi batas lebar
+    function drawFittedText(ctx, text, x, y, maxWidth, baseFontSize, fontStyle = 'bold', align = 'center') {
+      ctx.textAlign = align;
+      let fontSize = baseFontSize;
+      ctx.font = `${fontStyle} ${fontSize}px sans-serif`;
+      while (ctx.measureText(text).width > maxWidth && fontSize > 8) {
+        fontSize -= 0.5;
+        ctx.font = `${fontStyle} ${fontSize}px sans-serif`;
+      }
+      ctx.fillText(text, x, y);
+    }
+
+    function createHighResStickerCanvas() {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const qrCanvas = document.getElementById('previewQrCanvas');
+      const paperWidth = document.getElementById('thermalWidthSelect')?.value || '58';
+      
+      const widthPx = parseInt(paperWidth) === 80 ? 576 : 384;
+      canvas.width = widthPx;
+      canvas.height = widthPx;
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Frame Border dengan padding dalam
+      ctx.strokeStyle = "#000000";
+      ctx.lineWidth = 4;
+      const margin = 8;
+      const printableWidth = canvas.width - (margin * 2);
+      ctx.strokeRect(margin, margin, printableWidth, canvas.height - (margin * 2));
+
+      const headerHeight = Math.round(canvas.height * 0.15);
+      ctx.fillStyle = "#000000";
+      ctx.fillRect(margin + 2, margin + 2, printableWidth - 4, headerHeight);
+
+      const compVal = companyNameInput ? (companyNameInput.value.toUpperCase() || 'PERUSAHAAN APAR') : 'PERUSAHAAN APAR';
+
+      if (customLogoImageObj && customLogoImageObj.complete && customLogoImageObj.naturalWidth > 0) {
+        // Draw Custom Logo in Canvas Header
+        const maxLogoH = Math.round(headerHeight * 0.7);
+        const maxLogoW = Math.round(printableWidth * 0.7);
+        let logoW = customLogoImageObj.naturalWidth;
+        let logoH = customLogoImageObj.naturalHeight;
+        
+        const ratio = Math.min(maxLogoW / logoW, maxLogoH / logoH);
+        logoW = logoW * ratio;
+        logoH = logoH * ratio;
+
+        const logoX = (canvas.width - logoW) / 2;
+        const logoY = margin + ((headerHeight - logoH) / 2);
+        
+        // Background putih tipis untuk logo jika diperlukan
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(logoX - 4, logoY - 2, logoW + 8, logoH + 4);
+        ctx.drawImage(customLogoImageObj, logoX, logoY, logoW, logoH);
+      } else {
+        ctx.fillStyle = "#ffffff";
+        ctx.textBaseline = "middle";
+        drawFittedText(ctx, compVal, canvas.width / 2, margin + (headerHeight / 2), printableWidth - 16, Math.round(canvas.width * 0.042), 'bold');
+      }
+
+      if (qrCanvas) {
+        // QR Code sedikit dikecilkan dan dinaikkan agar tidak menimpa teks bawah
+        const qrSizePx = Math.round(canvas.width * 0.64);
+        const qrX = Math.round((canvas.width - qrSizePx) / 2);
+        const qrY = Math.round(margin + headerHeight + (canvas.height - headerHeight - qrSizePx) * 0.10);
+        ctx.drawImage(qrCanvas, qrX, qrY, qrSizePx, qrSizePx);
+      }
+
+      const fillVal = fillDateInput ? fillDateInput.value : '';
+      const expVal = expireDateInput ? expireDateInput.value : '';
+      const phoneVal = inspectorContactInput ? inspectorContactInput.value : '';
+      const dateText = `Isi: ${formatDateDisplay(fillVal)} | Exp: ${formatDateDisplay(expVal)}`;
+
+      ctx.fillStyle = "#000000";
+      ctx.textBaseline = "alphabetic";
+      // Teks diturunkan posisinya (jarak ke bawah diperkecil)
+      drawFittedText(ctx, dateText, canvas.width / 2, canvas.height - Math.round(canvas.height * 0.10), printableWidth - 16, Math.round(canvas.width * 0.036), 'bold');
+
+      if (phoneVal) {
+        drawFittedText(ctx, `Inspector: ${phoneVal}`, canvas.width / 2, canvas.height - Math.round(canvas.height * 0.05), printableWidth - 16, Math.round(canvas.width * 0.030), 'bold');
+      }
+
+      drawFittedText(ctx, "LABEL INSPEKSI APAR K3", canvas.width / 2, canvas.height - Math.round(canvas.height * 0.018), printableWidth - 16, Math.round(canvas.width * 0.022), 'normal');
+
+      return canvas;
+    }
+
+    async function printBatchToThermalBT() {
+      try {
+        if (!btCharacteristic) {
+          const connected = await connectBluetoothPrinter();
+          if (!connected) return;
+        }
+
+        const batchGrid = document.getElementById('batchGrid');
+        const canvases = batchGrid ? batchGrid.querySelectorAll('canvas') : [];
+
+        if (canvases.length === 0) {
+          showToast("Belum ada data batch stiker untuk dicetak", "error");
+          return;
+        }
+
+        const paperWidth = document.getElementById('thermalWidthSelect')?.value || '58';
+        const printScale = parseInt(document.getElementById('thermalScaleSelect')?.value || '90');
+        const offsetX = parseInt(document.getElementById('thermalOffsetXSelect')?.value || '-80');
+        showToast(`Mencetak ${canvases.length} stiker ke RPP02N...`);
+
+        for (let i = 0; i < canvases.length; i++) {
+          const qrCanvas = canvases[i];
+          const tempCanvas = document.createElement('canvas');
+          const targetWidth = parseInt(paperWidth) === 80 ? 576 : 384;
+          tempCanvas.width = targetWidth;
+          tempCanvas.height = targetWidth;
+
+          const ctx = tempCanvas.getContext('2d');
+          ctx.fillStyle = "#FFFFFF";
+          ctx.fillRect(0, 0, targetWidth, targetWidth);
+          ctx.strokeStyle = "#000000";
+          ctx.lineWidth = 4;
+          ctx.strokeRect(8, 8, targetWidth - 16, targetWidth - 16);
+
+          const qrDrawSize = Math.round(targetWidth * 0.52);
+          const qrX = Math.round((targetWidth - qrDrawSize) / 2);
+          const qrY = Math.round((targetWidth - qrDrawSize) / 2);
+          ctx.drawImage(qrCanvas, qrX, qrY, qrDrawSize, qrDrawSize);
+
+          const rasterBytes = canvasToEscPosRaster(tempCanvas, paperWidth, printScale, offsetX);
+          await sendDataToThermalPrinter(rasterBytes);
+          await new Promise(r => setTimeout(r, 400));
+        }
+        showToast("Seluruh batch stiker berhasil dicetak!");
+      } catch (e) {
+        console.error("Thermal batch print error:", e);
+        showToast("Gagal cetak batch thermal: " + e.message, "error");
+      }
+    }
+
+    function switchTab(tab) {
+      const singleTab = document.getElementById('singleTab');
+      const batchTab = document.getElementById('batchTab');
+      const singleBtn = document.getElementById('tabSingleBtn');
+      const batchBtn = document.getElementById('tabBatchBtn');
+
+      if (tab === 'single') {
+        if (singleTab) { singleTab.classList.remove('hidden'); }
+        if (batchTab) { batchTab.classList.add('hidden'); }
+        if (singleBtn) { singleBtn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-red-700 shadow-sm transition"; }
+        if (batchBtn) { batchBtn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-800 text-red-100 hover:bg-red-600 transition"; }
+      } else {
+        if (singleTab) { singleTab.classList.add('hidden'); }
+        if (batchTab) { batchTab.classList.remove('hidden'); }
+        if (batchBtn) { batchBtn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-red-700 shadow-sm transition"; }
+        if (singleBtn) { singleBtn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-800 text-red-100 hover:bg-red-600 transition"; }
+      }
+    }
+
+    function formatDateDisplay(dateStr) {
+      if (!dateStr) return '-';
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+      return dateStr;
+    }
+
+    function quickSetExpire(years) {
+      const fillD = (fillDateInput && fillDateInput.value) ? new Date(fillDateInput.value) : new Date();
+      const expD = new Date(fillD);
+      expD.setFullYear(expD.getFullYear() + years);
+      
+      const yyyy = expD.getFullYear();
+      const mm = String(expD.getMonth() + 1).padStart(2, '0');
+      const dd = String(expD.getDate()).padStart(2, '0');
+      
+      if (expireDateInput) {
+        expireDateInput.value = `${yyyy}-${mm}-${dd}`;
+      }
+      updateStickerPreview();
+    }
+
+    function updateStickerPreview() {
+      try {
+        const company = (companyNameInput && companyNameInput.value) ? companyNameInput.value : 'NAMA PERUSAHAAN';
+        const vendorName = (vendorNameInput && vendorNameInput.value) ? vendorNameInput.value : '-';
+        const vendorAddress = (vendorAddressInput && vendorAddressInput.value) ? vendorAddressInput.value : '-';
+        const vendorContact = (vendorContactInput && vendorContactInput.value) ? vendorContactInput.value : '-';
+        const tagCode = (barcodeValueInput && barcodeValueInput.value) ? barcodeValueInput.value : 'APAR-0000';
+        const agent = agentTypeInput ? agentTypeInput.value : 'Dry Chemical Powder';
+        const weight = weightValueInput ? weightValueInput.value : '3.5 Kg';
+        const fillDateStr = fillDateInput ? fillDateInput.value : '';
+        const expireDateStr = expireDateInput ? expireDateInput.value : '';
+        const inspector = (inspectorNameInput && inspectorNameInput.value) ? inspectorNameInput.value : '-';
+        const inspectorPhone = (inspectorContactInput && inspectorContactInput.value) ? inspectorContactInput.value : '-';
+        const location = (locationTagInput && locationTagInput.value) ? locationTagInput.value : '-';
+        const qrDataType = qrDataTypeSelect ? qrDataTypeSelect.value : 'idOnly';
+        const theme = accentColorSelect ? accentColorSelect.value : 'red';
+        const stickerMode = stickerModeSelect ? stickerModeSelect.value : 'qrOnly';
+        const sizeMm = qrSizeMmSelect ? qrSizeMmSelect.value : '50';
+
+        const detailsSection = document.getElementById('detailsSection');
+        if (detailsSection) {
+          if (stickerMode === 'fullDetails') {
+            detailsSection.classList.remove('hidden');
+          } else {
+            detailsSection.classList.add('hidden');
+          }
+        }
+
+        const dimensionBadge = document.getElementById('dimensionBadge');
+        if (dimensionBadge) {
+          dimensionBadge.textContent = `Dimensi Cetak: ${sizeMm} x ${sizeMm} mm (300 DPI Presisi)`;
+        }
+
+        const previewQrCanvas = document.getElementById('previewQrCanvas');
+        if (previewQrCanvas) {
+          // Dynamic scaling untuk ukuran preview QR Canvas yang lebih besar
+          const displayPx = Math.min(Math.max(parseInt(sizeMm) * 3.5, 220), 340);
+          previewQrCanvas.style.width = `${displayPx}px`;
+          previewQrCanvas.style.height = `${displayPx}px`;
+        }
+
+        const previewCompany = document.getElementById('previewCompany');
+        if (previewCompany) previewCompany.textContent = company;
+
+        // Logo Custom Handling
+        const previewLogoImg = document.getElementById('previewLogoImg');
+        const defaultHeaderIcon = document.getElementById('defaultHeaderIcon');
+        if (previewLogoImg && defaultHeaderIcon) {
+          if (customLogoData) {
+            previewLogoImg.src = customLogoData;
+            previewLogoImg.classList.remove('hidden');
+            defaultHeaderIcon.classList.add('hidden');
+          } else {
+            previewLogoImg.classList.add('hidden');
+            defaultHeaderIcon.classList.remove('hidden');
+          }
+        }
+        
+        const previewAgent = document.getElementById('previewAgent');
+        if (previewAgent) previewAgent.textContent = agent;
+
+        const previewWeight = document.getElementById('previewWeight');
+        if (previewWeight) previewWeight.textContent = weight;
+
+        const previewFillDate = document.getElementById('previewFillDate');
+        if (previewFillDate) previewFillDate.textContent = formatDateDisplay(fillDateStr);
+
+        const previewExpireDate = document.getElementById('previewExpireDate');
+        if (previewExpireDate) previewExpireDate.textContent = formatDateDisplay(expireDateStr);
+
+        const previewInspector = document.getElementById('previewInspector');
+        if (previewInspector) previewInspector.textContent = inspector;
+
+        const previewLocation = document.getElementById('previewLocation');
+        if (previewLocation) previewLocation.textContent = location;
+
+        const previewBarcodeText = document.getElementById('previewBarcodeText');
+        if (previewBarcodeText) {
+          const fillStr = formatDateDisplay(fillDateStr);
+          const expStr = formatDateDisplay(expireDateStr);
+          previewBarcodeText.innerHTML = `
+            <div class="flex items-center gap-2">
+              <span class="text-slate-600 font-medium">Isi: <strong class="text-slate-800">${fillStr}</strong></span> 
+              <span class="text-slate-300">|</span> 
+              <span class="text-red-600 font-bold">Exp: ${expStr}</span>
+            </div>
+            <div class="text-[10px] text-slate-600 font-medium flex items-center gap-1 border-t border-slate-100 pt-1 mt-0.5 w-full justify-center">
+              <i class="fa-solid fa-phone text-slate-400 text-[9px]"></i> Inspector: <strong class="text-slate-800">${inspectorPhone}</strong>
+            </div>
+          `;
+        }
+
+        const statusBadge = document.getElementById('statusBadge');
+        const expireBox = document.getElementById('expireBox');
+
+        if (expireDateStr && statusBadge) {
+          const expDateObj = new Date(expireDateStr);
+          const todayObj = new Date();
+          todayObj.setHours(0, 0, 0, 0);
+
+          if (expDateObj < todayObj) {
+            statusBadge.className = "px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs font-bold flex items-center gap-1.5";
+            statusBadge.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> HARUS DIISI ULANG (EXPIRED)`;
+            if (expireBox) { expireBox.className = "bg-red-200 p-1.5 rounded border border-red-400 animate-pulse"; }
+          } else {
+            statusBadge.className = "px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold flex items-center gap-1.5";
+            statusBadge.innerHTML = `<i class="fa-solid fa-shield-check"></i> SIAP PAKAI`;
+            if (expireBox) { expireBox.className = "bg-red-50 p-1.5 rounded border border-red-200"; }
+          }
+        }
+
+        const stickerHeader = document.getElementById('stickerHeader');
+        const aparSticker = document.getElementById('aparSticker');
+
+        if (stickerHeader && aparSticker) {
+          if (theme === 'blue') {
+            stickerHeader.className = "w-full bg-blue-600 text-white p-3 text-center relative border-b-2 border-blue-700";
+            aparSticker.style.borderColor = "#2563eb";
+          } else if (theme === 'emerald') {
+            stickerHeader.className = "w-full bg-emerald-600 text-white p-3 text-center relative border-b-2 border-emerald-700";
+            aparSticker.style.borderColor = "#059669";
+          } else if (theme === 'dark') {
+            stickerHeader.className = "w-full bg-slate-800 text-white p-3 text-center relative border-b-2 border-black";
+            aparSticker.style.borderColor = "#1e293b";
+          } else {
+            stickerHeader.className = "w-full bg-red-600 text-white p-3 text-center relative border-b-2 border-red-700";
+            aparSticker.style.borderColor = "#dc2626";
+          }
+        }
+
+        let qrContent = tagCode;
+        if (qrDataType === 'fullDetails') {
+          qrContent = `[INSPEKSI APAR K3]\nID Tabung: ${tagCode}\nPemilik (Konsumen): ${company}\nVendor: ${vendorName}\nMedia: ${agent}\nBobot: ${weight}\nTgl Isi: ${formatDateDisplay(fillDateStr)}\nTgl Exp: ${formatDateDisplay(expireDateStr)}\nNama Petugas: ${inspector}\nNo. Telp Petugas: ${inspectorPhone}\nLokasi: ${location}`;
+        } else if (qrDataType === 'compactK3') {
+          qrContent = `Pemilik: ${company}\nVendor: ${vendorName}\nMedia: ${agent}\nBobot: ${weight}\nTgl Isi: ${formatDateDisplay(fillDateStr)}\nTgl Exp: ${formatDateDisplay(expireDateStr)}\nPetugas: ${inspector}\nNo. Telp: ${inspectorPhone}`;
+        }
+
+        const qrCanvas = document.getElementById('previewQrCanvas');
+        renderQrToCanvas(qrCanvas, qrContent, 400);
+
+        if (typeof window.saveToCloud === 'function') {
+          window.saveToCloud();
+        }
+      } catch (err) {
+        console.error("Preview update error:", err);
+      }
+    }
+
+    function renderQrToCanvas(canvas, text, size = 400) {
+      if (!canvas) return;
+      
+      if (window.QRCode && typeof QRCode.toCanvas === 'function') {
+        QRCode.toCanvas(canvas, text, {
+          width: size,
+          margin: 2,
+          errorCorrectionLevel: 'M',
+          color: { dark: "#000000", light: "#ffffff" }
+        }, function (error) {
+          if (error) {
+            console.warn("Library QR gagal, beralih ke image fallback:", error);
+            renderQrFallback(canvas, text, size);
+          }
+        });
+      } else {
+        renderQrFallback(canvas, text, size);
+      }
+    }
+
+    function renderQrFallback(canvas, text, size = 400) {
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      
+      const img = new Image();
+      img.crossOrigin = "Anonymous";
+      img.src = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=10&data=${encodeURIComponent(text)}`;
+      
+      img.onload = function() {
+        ctx.clearRect(0, 0, size, size);
+        ctx.drawImage(img, 0, 0, size, size);
+      };
+
+      img.onerror = function() {
+        ctx.fillStyle = "#fee2e2";
+        ctx.fillRect(0, 0, size, size);
+        ctx.fillStyle = "#dc2626";
+        ctx.font = "10px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("QR Error", size / 2, size / 2);
+      };
+    }
+
+    function downloadStickerPNG() {
+      try {
+        const modeVal = stickerModeSelect ? stickerModeSelect.value : 'qrOnly';
+        const sizeMm = qrSizeMmSelect ? qrSizeMmSelect.value : '50';
+        
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const qrCanvas = document.getElementById('previewQrCanvas');
+
+        if (modeVal === 'qrOnly') {
+          const paperWidth = document.getElementById('thermalWidthSelect')?.value || '58';
+          const widthPx = parseInt(paperWidth) === 80 ? 576 : 384;
+          canvas.width = widthPx;
+          canvas.height = widthPx;
+
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+          ctx.strokeStyle = "#000000";
+          ctx.lineWidth = 4;
+          const margin = 8;
+          const printableWidth = canvas.width - (margin * 2);
+          ctx.strokeRect(margin, margin, printableWidth, canvas.height - (margin * 2));
+
+          const headerHeight = Math.round(canvas.height * 0.15);
+          ctx.fillStyle = "#000000";
+          ctx.fillRect(margin + 2, margin + 2, printableWidth - 4, headerHeight);
+
+          ctx.fillStyle = "#ffffff";
+          ctx.textBaseline = "middle";
+          const compVal = companyNameInput ? (companyNameInput.value.toUpperCase() || 'PERUSAHAAN APAR') : 'PERUSAHAAN APAR';
+          drawFittedText(ctx, compVal, canvas.width / 2, margin + (headerHeight / 2), printableWidth - 16, Math.round(canvas.width * 0.042), 'bold');
+
+          if (qrCanvas) {
+            // QR Code dinaikkan posisinya untuk memberi ruang teks di bawah
+            const qrSizePx = Math.round(canvas.width * 0.65);
+            const qrX = Math.round((canvas.width - qrSizePx) / 2);
+            const qrY = Math.round(headerHeight + (canvas.height - headerHeight - qrSizePx) * 0.12);
+            ctx.drawImage(qrCanvas, qrX, qrY, qrSizePx, qrSizePx);
+          }
+
+          const fillVal = fillDateInput ? fillDateInput.value : '';
+          const expVal = expireDateInput ? expireDateInput.value : '';
+          const phoneVal = inspectorContactInput ? inspectorContactInput.value : '';
+          const dateText = `Isi: ${formatDateDisplay(fillVal)}  |  Exp: ${formatDateDisplay(expVal)}`;
+          
+          ctx.fillStyle = "#0f172a";
+          ctx.font = `bold ${Math.round(canvas.width * 0.038)}px sans-serif`;
+          ctx.textAlign = "center";
+          // Teks diturunkan ke bawah
+          ctx.fillText(dateText, canvas.width / 2, canvas.height - Math.round(canvas.height * 0.11));
+
+          if (phoneVal) {
+            ctx.fillStyle = "#334155";
+            ctx.font = `semibold ${Math.round(canvas.width * 0.030)}px sans-serif`;
+            ctx.fillText(`Kontak Inspector: ${phoneVal}`, canvas.width / 2, canvas.height - Math.round(canvas.height * 0.06));
+          }
+
+          ctx.fillStyle = "#64748b";
+          ctx.font = `${Math.round(canvas.width * 0.026)}px sans-serif`;
+          ctx.fillText("LABEL INSPEKSI APAR K3", canvas.width / 2, canvas.height - Math.round(canvas.height * 0.025));
+
+        } else {
+          canvas.width = 450;
+          canvas.height = 600;
+
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+          const themeVal = accentColorSelect ? accentColorSelect.value : 'red';
+          const themeColor = themeVal === 'blue' ? '#2563eb' : (themeVal === 'emerald' ? '#059669' : (themeVal === 'dark' ? '#1e293b' : '#dc2626'));
+          
+          ctx.strokeStyle = themeColor;
+          ctx.lineWidth = 8;
+          ctx.strokeRect(4, 4, canvas.width - 8, canvas.height - 8);
+
+          ctx.fillStyle = themeColor;
+          ctx.fillRect(8, 8, canvas.width - 16, 55);
+
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "bold 16px sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText("KARTU INSPEKSI & PENGISIAN APAR", canvas.width / 2, 40);
+
+          ctx.fillStyle = "#0f172a";
+          ctx.fillRect(8, 63, canvas.width - 16, 30);
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "bold 13px sans-serif";
+          const compVal = companyNameInput ? companyNameInput.value.toUpperCase() : 'NAMA PERUSAHAAN';
+          ctx.fillText(compVal, canvas.width / 2, 83);
+
+          ctx.fillStyle = "#334155";
+          ctx.font = "13px sans-serif";
+          ctx.textAlign = "left";
+          const agentVal = agentTypeInput ? agentTypeInput.value : '-';
+          const weightVal = weightValueInput ? weightValueInput.value : '-';
+          const fillVal = fillDateInput ? fillDateInput.value : '';
+          const expVal = expireDateInput ? expireDateInput.value : '';
+          const inspVal = inspectorNameInput ? inspectorNameInput.value : '-';
+          const locVal = locationTagInput ? locationTagInput.value : '-';
+          const tagVal = barcodeValueInput ? barcodeValueInput.value : 'APAR-0000';
+
+          ctx.fillText(`Jenis Media: ${agentVal}`, 30, 130);
+          ctx.fillText(`Bobot / Kapasitas: ${weightVal}`, 30, 160);
+          ctx.fillText(`Tanggal Isi: ${formatDateDisplay(fillVal)}`, 30, 190);
+
+          ctx.fillStyle = "#dc2626";
+          ctx.font = "bold 14px sans-serif";
+          ctx.fillText(`Masa Kadaluarsa: ${formatDateDisplay(expVal)}`, 30, 220);
+
+          ctx.fillStyle = "#475569";
+          ctx.font = "12px sans-serif";
+          ctx.fillText(`Petugas K3: ${inspVal}`, 30, 255);
+          ctx.fillText(`Lokasi Tabung: ${locVal}`, 30, 280);
+
+          if (qrCanvas) {
+            ctx.drawImage(qrCanvas, (canvas.width - 180) / 2, 310, 180, 180);
+          }
+
+          ctx.textAlign = "center";
+          ctx.fillStyle = "#1e293b";
+          ctx.font = "bold 14px monospace";
+          ctx.fillText(tagVal, canvas.width / 2, 520);
+
+          ctx.fillStyle = "#64748b";
+          ctx.font = "10px sans-serif";
+          ctx.fillText("* Periksa kondisi fisik & tekanan manometer setiap bulan.", canvas.width / 2, 560);
+        }
+
+        const link = document.createElement('a');
+        const tagVal = barcodeValueInput ? barcodeValueInput.value : 'APAR-0000';
+        link.download = `label-apar-qr-${tagVal}-${sizeMm}mm.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        showToast("Stiker Label QR Code berhasil diunduh!");
+      } catch (err) {
+        console.error("PNG download error:", err);
+        showToast("Gagal mengunduh gambar stiker", "error");
+      }
+    }
+
+    function printSingleSticker() {
+      window.print();
+    }
+
+    function copyTagCode() {
+      try {
+        const code = barcodeValueInput ? barcodeValueInput.value : '';
+        const dummy = document.createElement("textarea");
+        document.body.appendChild(dummy);
+        dummy.value = code;
+        dummy.select();
+        document.execCommand("copy");
+        document.body.removeChild(dummy);
+        showToast("Kode Tag APAR disalin!");
+      } catch (e) {
+        console.warn("Copy failed:", e);
+      }
+    }
+
+    function fillSample8Data() {
+      const sampleData = [
+        "APAR-2026-001 | Lantai 1 - Dapur Utama | Dry Chemical Powder | 3.5 Kg | 01/08/2026 | 01/08/2027 | 0895324269894",
+        "APAR-2026-002 | Lantai 2 - Ruang Server | CO2 (Carbon Dioxide) | 5.0 Kg | 01/08/2026 | 01/08/2028 | 0895324269894",
+        "APAR-2026-003 | Lantai 1 - Lobby Depan | Foam AFFF | 6.0 Kg | 01/08/2026 | 01/08/2027 | 0895324269894",
+        "APAR-2026-004 | Lantai 3 - Area Kantor | Dry Chemical Powder | 4.5 Kg | 01/08/2026 | 01/08/2027 | 0895324269894",
+        "APAR-2026-005 | Basement - Lobi Parkir | Clean Agent / Halotron | 3.0 Kg | 01/08/2026 | 01/08/2028 | 0895324269894",
+        "APAR-2026-006 | Gudang Bahan Kimia | Dry Chemical Powder | 9.0 Kg | 01/08/2026 | 01/08/2027 | 0895324269894",
+        "APAR-2026-007 | Ruang Panel Listrik | CO2 (Carbon Dioxide) | 3.2 Kg | 01/08/2026 | 01/08/2028 | 0895324269894",
+        "APAR-2026-008 | Kantin & Area Staff | Water Pressurized | 6.0 Kg | 01/08/2026 | 01/08/2027 | 0895324269894"
+      ].join('\n');
+
+      const batchInput = document.getElementById('batchInput');
+      if (batchInput) {
+        batchInput.value = sampleData;
+        generateBatchStickers();
+        showToast("8 data APAR berhasil dimuat!");
+      }
+    }
+
+    function generateBatchStickers() {
+      try {
+        const batchInput = document.getElementById('batchInput');
+        const batchGrid = document.getElementById('batchGrid');
+        const batchCount = document.getElementById('batchCount');
+
+        if (!batchInput || !batchGrid || !batchCount) return;
+
+        const rawText = batchInput.value;
+        const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+        if (lines.length === 0) {
+          showToast("Masukkan minimal 1 data tabung APAR", "error");
+          return;
+        }
+
+        batchGrid.innerHTML = '';
+        batchCount.textContent = `${lines.length} Stiker APAR Dihasilkan`;
+
+        const compName = companyNameInput ? (companyNameInput.value || 'PT. SEJAHTERA UTAMA') : 'PT. SEJAHTERA UTAMA';
+        const vendName = vendorNameInput ? (vendorNameInput.value || '-') : '-';
+        const vendAddr = vendorAddressInput ? (vendorAddressInput.value || '-') : '-';
+        const vendContact = vendorContactInput ? (vendorContactInput.value || '-') : '-';
+        const defaultFillD = formatDateDisplay(fillDateInput ? fillDateInput.value : '');
+        const defaultExpD = formatDateDisplay(expireDateInput ? expireDateInput.value : '');
+        const defaultInspPhone = inspectorContactInput ? (inspectorContactInput.value || '-') : '-';
+
+        lines.forEach((line, index) => {
+          const parts = line.split('|').map(p => p.trim());
+          const tagCode = parts[0] || `APAR-${index + 1}`;
+          const loc = parts[1] || 'Lokasi Standar';
+          const type = parts[2] || (agentTypeInput ? agentTypeInput.value : 'Dry Chemical Powder');
+          const weight = parts[3] || (weightValueInput ? weightValueInput.value : '3.5 Kg');
+          const fillD = parts[4] || defaultFillD;
+          const expD = parts[5] || defaultExpD;
+          const inspPhone = parts[6] || defaultInspPhone;
+
+          const card = document.createElement('div');
+          card.className = "batch-card-item bg-white p-3 rounded-2xl border-2 border-red-600 shadow-sm flex flex-col justify-between text-xs font-sans";
+          
+          const canvasId = `batch-qr-${index}`;
+          const qrDataText = `[INSPEKSI APAR K3]\nID Tabung: ${tagCode}\nPemilik (Konsumen): ${compName}\nVendor: ${vendName}\nMedia: ${type}\nBobot: ${weight}\nTgl Isi: ${fillD}\nTgl Exp: ${expD}\nNama Petugas: ${inspectorNameInput ? (inspectorNameInput.value || '-') : '-'}\nNo. Telp Petugas: ${inspPhone}\nLokasi: ${loc}`;
+
+          card.innerHTML = `
+            <div>
+              <div class="bg-red-600 text-white font-bold px-2 py-1 text-center text-[11px] rounded-lg uppercase tracking-wider flex justify-between items-center">
+                <span><i class="fa-solid fa-fire-extinguisher mr-1"></i> APAR</span>
+                <span class="text-[9px] font-mono bg-red-700 px-1.5 py-0.5 rounded">${tagCode}</span>
+              </div>
+              <div class="p-2 space-y-1 bg-white text-slate-800">
+                <div class="text-[10px] font-bold text-slate-500 uppercase truncate">${compName}</div>
+                <div class="grid grid-cols-2 gap-1 text-[10px] pt-1 border-t border-slate-100">
+                  <div><span class="text-slate-400 block font-semibold text-[8px] uppercase">Jenis Media:</span> <strong class="text-slate-700 block truncate">${type}</strong></div>
+                  <div><span class="text-slate-400 block font-semibold text-[8px] uppercase">Kapasitas:</span> <strong class="text-slate-700 block truncate">${weight}</strong></div>
+                </div>
+                <div class="text-[10px] pt-1 border-t border-slate-100">
+                  <span class="text-slate-400 block font-semibold text-[8px] uppercase">Lokasi:</span> <strong class="text-slate-700 block truncate">${loc}</strong>
+                </div>
+              </div>
+            </div>
+            
+            <div class="pt-2 pb-1 border-t border-slate-200 flex flex-col items-center justify-center bg-slate-50 rounded-xl mt-1">
+              <canvas id="${canvasId}" class="bg-white p-1.5 border border-slate-200 rounded-lg shadow-2xs"></canvas>
+              <div class="text-[10px] font-mono text-center mt-1 text-slate-700 font-semibold">
+                Isi: <strong>${fillD}</strong> | <span class="text-red-600">Exp: <strong>${expD}</strong></span>
+                <div class="text-[9px] font-sans text-slate-500 font-medium mt-0.5"><i class="fa-solid fa-phone text-[8px] text-slate-400"></i> Inspector: ${inspPhone}</div>
+              </div>
+            </div>
+          `;
+
+          batchGrid.appendChild(card);
+
+          const cEl = document.getElementById(canvasId);
+          if (cEl) {
+            renderQrToCanvas(cEl, qrDataText, 140);
+          }
+        });
+
+        showToast(`Berhasil membuat ${lines.length} stiker APAR!`);
+      } catch (err) {
+        console.error("Batch processing error:", err);
+        showToast("Gagal memproses batch stiker", "error");
+      }
+    }
+
+    function showToast(msg, type = "success") {
+      const toast = document.getElementById('toast');
+      const toastMsg = document.getElementById('toastMsg');
+      
+      if (!toast || !toastMsg) return;
+
+      toastMsg.textContent = msg;
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+
+      setTimeout(() => {
+        toast.classList.remove('translate-y-0', 'opacity-100');
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 3000);
+    }
+
+    window.onload = function() {
+      try {
+        const today = new Date();
+        const nextYear = new Date();
+        nextYear.setFullYear(today.getFullYear() + 1);
+
+        const formatDateInput = (d) => {
+          const yyyy = d.getFullYear();
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          return `${yyyy}-${mm}-${dd}`;
+        };
+
+        if (fillDateInput && !fillDateInput.value) { fillDateInput.value = formatDateInput(today); }
+        if (expireDateInput && !expireDateInput.value) { expireDateInput.value = formatDateInput(nextYear); }
+
+        if (logoInput) {
+          logoInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+              const reader = new FileReader();
+              reader.onload = function(evt) {
+                customLogoData = evt.target.result;
+                customLogoImageObj = new Image();
+                customLogoImageObj.src = customLogoData;
+                customLogoImageObj.onload = function() {
+                  updateStickerPreview();
+                };
+              };
+              reader.readAsDataURL(file);
+            }
+          });
+        }
+
+        if (appHeaderLogoInput) {
+          appHeaderLogoInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+              const reader = new FileReader();
+              reader.onload = function(evt) {
+                appHeaderLogoData = evt.target.result;
+                updateHeaderAppInfo();
+                showToast("Logo header berhasil diperbarui!");
+              };
+              reader.readAsDataURL(file);
+            }
+          });
+        }
+
+        if (appTitleInput) appTitleInput.addEventListener('input', updateHeaderAppInfo);
+        if (appSubtitleInput) appSubtitleInput.addEventListener('input', updateHeaderAppInfo);
+
+        const inputs = [companyNameInput, vendorNameInput, vendorAddressInput, vendorContactInput, barcodeValueInput, agentTypeInput, weightValueInput, fillDateInput, expireDateInput, inspectorNameInput, inspectorContactInput, locationTagInput, qrDataTypeSelect, accentColorSelect, stickerModeSelect, qrSizeMmSelect];
+        inputs.forEach(input => {
+          if (input) {
+            input.addEventListener('input', updateStickerPreview);
+            input.addEventListener('change', updateStickerPreview);
+          }
+        });
+
+        updateStickerPreview();
+
+        setTimeout(updateStickerPreview, 500);
+        setTimeout(updateStickerPreview, 1200);
+      } catch (err) {
+        console.error("Initialization error:", err);
+      }
+    };
+  </script>
+
+  <script>
+    // PWA Service Worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js', { scope: './' })
+          .then(reg => console.log('APAR Studio PWA aktif:', reg.scope))
+          .catch(err => console.warn('PWA Service Worker gagal:', err));
+      });
+    }
+
+    // Tombol instalasi PWA (muncul jika browser menyediakan prompt)
+    let deferredInstallPrompt = null;
+    window.addEventListener('beforeinstallprompt', (event) => {
+      event.preventDefault();
+      deferredInstallPrompt = event;
+      const btn = document.getElementById('installPwaBtn');
+      if (btn) btn.classList.remove('hidden');
+    });
+
+    async function installPWA() {
+      if (!deferredInstallPrompt) {
+        showToast('Jika tombol install tidak muncul, pilih menu browser → Tambahkan ke layar utama.');
+        return;
+      }
+      deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice;
+      deferredInstallPrompt = null;
+      const btn = document.getElementById('installPwaBtn');
+      if (btn) btn.classList.add('hidden');
+    }
+
+    window.addEventListener('appinstalled', () => {
+      const btn = document.getElementById('installPwaBtn');
+      if (btn) btn.classList.add('hidden');
+      showToast('APAR Studio berhasil dipasang di HP.');
+    });
+  </script>
+</body>
+</html>
